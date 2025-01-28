@@ -26,18 +26,18 @@ def greedy_decode(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_
     eos_idx = tokenizer_tgt.token_to_id('[EOS]')
 
     encoder_output = model.encode(source, source_mask)
-    decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
+    decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source)
 
     while True:
         if decoder_input.size(1) == max_len:
             break
 
-        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
+        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask)
         out = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
         prob = model.project(out[:, -1])
         _, next_word = torch.max(prob, dim=1)
         decoder_input = torch.cat(
-            [decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], dim=1
+            [decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item())], dim=1
         )
 
         if next_word == eos_idx:
@@ -63,8 +63,8 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
     with torch.no_grad():
         for batch in validation_ds:
             count += 1
-            encoder_input = batch["encoder_input"].to(device)
-            encoder_mask = batch["encoder_mask"].to(device)
+            encoder_input = batch["encoder_input"]
+            encoder_mask = batch["encoder_mask"]
             assert encoder_input.size(0) == 1, "Batch size must be 1 for validation"
 
             model_out = greedy_decode(model, encoder_input, encoder_mask, tokenizer_src, tokenizer_tgt, max_len, device)
@@ -149,7 +149,7 @@ def train_model(config):
     Path(f"{config['datasource']}_{config['model_folder']}").mkdir(parents=True, exist_ok=True)
 
     train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config)
-    model = get_model(config, tokenizer_src.get_vocab_size(), tokenizer_tgt.get_vocab_size()).to(device)
+    model = get_model(config, tokenizer_src.get_vocab_size(), tokenizer_tgt.get_vocab_size())
     writer = SummaryWriter(config['experiment_name'])
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'], eps=1e-9)
@@ -167,23 +167,23 @@ def train_model(config):
     else:
         print('No model to preload, starting from scratch')
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_src.token_to_id('[PAD]'), label_smoothing=0.1).to(device)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_src.token_to_id('[PAD]'), label_smoothing=0.1)
 
     for epoch in range(initial_epoch, config['num_epochs']):
         torch.cuda.empty_cache()
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
-            encoder_input = batch['encoder_input'].to(device)
-            decoder_input = batch['decoder_input'].to(device)
-            encoder_mask = batch['encoder_mask'].to(device)
-            decoder_mask = batch['decoder_mask'].to(device)
+            encoder_input = batch['encoder_input']
+            decoder_input = batch['decoder_input']
+            encoder_mask = batch['encoder_mask']
+            decoder_mask = batch['decoder_mask']
 
             encoder_output = model.encode(encoder_input, encoder_mask)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
             proj_output = model.project(decoder_output)
 
-            label = batch['label'].to(device)
+            label = batch['label']
 
             loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()), label.view(-1))
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
